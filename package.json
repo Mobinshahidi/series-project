@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "wrangler": "^4.51.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
   }
 }
