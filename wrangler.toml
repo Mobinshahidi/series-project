@@ -1,0 +1,11 @@
+name = "series-backend"
+main = "src/worker.js"
+compatibility_date = "2025-11-30"
+
+# KV will be filled later
+[[kv_namespaces]]
+binding = "SERIES_KV"
+id = "a8052aa8bce24a949ff90d608518cde3"
+
+pages_build_output_dir = "public"
+

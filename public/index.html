@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Series Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+    };
+  </script>
+  <style>
+    .clamp-4 {
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* simple dropdown */
+    #searchSuggestions {
+      max-height: 260px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <header class="sticky top-0 z-10 backdrop-blur bg-slate-950/80 border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <h1 class="text-2xl font-bold tracking-tight text-slate-50">
+        Series Finder
+      </h1>
+      <div class="flex flex-wrap gap-2 md:justify-end items-center text-sm">
+        <div class="relative">
+          <input
+            id="searchInput"
+            type="search"
+            autocomplete="off"
+            placeholder="Search title or overview…"
+            class="rounded-xl border border-slate-700 bg-slate-900 text-slate-100 px-3 py-1.5 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          <div
+            id="searchSuggestions"
+            class="hidden absolute mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 text-xs shadow-lg z-20"
+          ></div>
+        </div>
+
+        <select
+          id="yearFilter"
+          class="rounded-xl border border-slate-700 bg-slate-900 text-slate-100 px-3 py-1.5"
+        >
+          <option value="">All years</option>
+        </select>
+
+        <select
+          id="sortBy"
+          class="rounded-xl border border-slate-700 bg-slate-900 text-slate-100 px-3 py-1.5"
+        >
+          <option value="original">Sort: Original order</option>
+          <option value="title">Sort: Title A–Z</option>
+          <option value="year">Sort: Year</option>
+          <option value="rating">Sort: Rating high → low</option>
+          <option value="watched">Sort: Watched high → low</option>
+        </select>
+
+        <button id="exportCsv" class="rounded-xl border border-slate-700 px-3 py-1.5">
+          Export CSV
+        </button>
+        <button id="exportJson" class="rounded-xl border border-slate-700 px-3 py-1.5">
+          Export JSON
+        </button>
+
+        <button
+          id="toggleForm"
+          class="rounded-xl border border-sky-500 text-sky-400 px-4 py-1.5"
+        >
+          + Add / Edit series
+        </button>
+      </div>
+    </div>
+
+    <!-- Add/Edit form -->
+    <div id="seriesFormWrap" class="max-w-7xl mx-auto px-4 pb-3 hidden">
+      <form
+        id="seriesForm"
+        class="flex flex-wrap gap-2 items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+      >
+        <input type="hidden" id="seriesId" />
+        <input
+          id="seriesTitle"
+          type="text"
+          placeholder="Title"
+          class="flex-1 min-w-[160px] rounded-xl border border-slate-700 bg-slate-950 text-slate-100 px-3 py-1 focus:outline-none focus:ring-2 focus:ring-sky-500"
+        />
+        <input
+          id="seriesYear"
+          type="number"
+          placeholder="Year (optional)"
+          class="w-28 rounded-xl border border-slate-700 bg-slate-950 text-slate-100 px-3 py-1 focus:outline-none focus:ring-2 focus:ring-sky-500"
+        />
+        <button
+          type="submit"
+          class="rounded-xl bg-sky-500 text-slate-950 px-4 py-1 font-medium"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          id="seriesCancel"
+          class="rounded-xl border border-slate-700 px-4 py-1"
+        >
+          Cancel
+        </button>
+        <span id="seriesFormStatus" class="text-xs text-slate-400 ml-2"></span>
+      </form>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4">
+    <p id="status" class="text-sm text-slate-400 mb-3">
+      Loading series…
+    </p>
+    <div
+      id="grid"
+      class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start"
+    ></div>
+  </main>
+
+  <!-- Card template -->
+  <template id="cardTpl">
+    <article
+      class="rounded-2xl overflow-hidden shadow-sm border border-slate-800 bg-slate-900 flex flex-col h-full"
+    >
+      <div class="relative">
+        <div
+          data-img
+          class="aspect-[2/3] bg-slate-800 grid place-items-center text-slate-500 text-sm"
+        >
+          Loading…
+        </div>
+        <button
+          type="button"
+          data-delete
+          class="absolute top-2 right-2 text-xs bg-red-600/90 text-white px-2 py-1 rounded-full shadow hover:bg-red-500"
+        >
+          Delete
+        </button>
+      </div>
+
+      <div class="p-4 flex-1 flex flex-col gap-2">
+        <div class="flex justify-between items-start gap-2">
+          <h2 class="font-semibold text-lg leading-snug flex-1 text-slate-50"></h2>
+          <button
+            type="button"
+            data-edit
+            class="text-xs rounded-full border border-slate-700 px-2 py-1 text-slate-300 hover:border-sky-500 hover:text-sky-400"
+          >
+            Edit
+          </button>
+        </div>
+
+        <!-- Rating -->
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-1">
+            <span class="text-slate-400 mr-1">Your rating:</span>
+            <div
+              data-rating
+              class="flex items-center gap-1 text-yellow-400 text-lg"
+            ></div>
+          </div>
+          <span data-rating-label class="text-slate-400"></span>
+        </div>
+
+        <!-- Watched -->
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-slate-400">Watched:</span>
+            <span data-watched-label class="text-slate-100"></span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              data-watched-dec
+              class="rounded-full border border-slate-700 px-2 py-0.5 text-xs hover:border-sky-500"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              data-watched-inc
+              class="rounded-full border border-slate-700 px-2 py-0.5 text-xs hover:border-sky-500"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <p class="text-sm text-slate-300 clamp-4"></p>
+        <div
+          class="mt-1 text-[0.7rem] flex flex-wrap gap-x-3 gap-y-1 text-slate-400"
+        ></div>
+        <a
+          target="_blank"
+          rel="noopener"
+          class="mt-auto pt-2 text-sm text-sky-400 hover:underline"
+        >
+          View on TMDB →
+        </a>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    const API_BASE = "https://series-backend.mobinshahidiinia.workers.dev";
+    const API_TMDB = API_BASE + "/api/tmdb";
+    const API_SERIES = API_BASE + "/api/series";
+    const IMG_BASE = "https://image.tmdb.org/t/p/w342";
+
+    async function readSeriesList() {
+      const res = await fetch(API_SERIES, { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load series list from API");
+      const json = await res.json();
+      return json.items || [];
+    }
+
+    const debounce = (fn, ms = 250) => {
+      let t;
+      return (...a) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...a), ms);
+      };
+    };
+
+    async function fetchShow(title, year) {
+      const url = new URL(API_TMDB);
+      url.searchParams.set("q", title);
+      if (year) url.searchParams.set("year", year);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("TMDB lookup failed");
+      return res.json();
+    }
+
+    let DATA = []; // for export
+    let SERIES = []; // raw series list
+    let CARD_INDEX = 0;
+
+    function renderUserRating(container, rating) {
+      container.innerHTML = "";
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.rate = String(i);
+        btn.textContent = i <= rating ? "★" : "☆";
+        btn.className = "cursor-pointer leading-none";
+        container.appendChild(btn);
+      }
+    }
+
+    function updateRatingLabel(labelEl, rating) {
+      if (!rating || rating <= 0) {
+        labelEl.textContent = "Not rated yet";
+      } else {
+        labelEl.textContent = `${rating}/5`;
+      }
+    }
+
+    function updateWatchedLabel(el, watched, total) {
+      if (total && total > 0) {
+        el.textContent = `${watched} / ${total} eps`;
+      } else {
+        el.textContent = `${watched} eps`;
+      }
+    }
+
+    function mountCard(seriesItem) {
+      const { id, title, year, rating = 0, watched = 0 } = seriesItem;
+
+      const grid = document.getElementById("grid");
+      const tpl = document.getElementById("cardTpl");
+      const node = tpl.content.cloneNode(true);
+
+      const imgWrap = node.querySelector("[data-img]");
+      const h2 = node.querySelector("h2");
+      const p = node.querySelector("p");
+      const meta = node.querySelector("div.mt-1");
+      const link = node.querySelector("a");
+      const ratingContainer = node.querySelector("[data-rating]");
+      const ratingLabel = node.querySelector("[data-rating-label]");
+      const editBtn = node.querySelector("[data-edit]");
+      const deleteBtn = node.querySelector("[data-delete]");
+      const watchedLabel = node.querySelector("[data-watched-label]");
+      const btnWatchedInc = node.querySelector("[data-watched-inc]");
+      const btnWatchedDec = node.querySelector("[data-watched-dec]");
+
+      h2.textContent = year ? `${title} — ${year}` : title;
+      p.textContent = "Fetching…";
+      link.removeAttribute("href");
+
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(node);
+      const cardEl = wrapper.firstElementChild;
+      cardEl.dataset.seriesId = id;
+      cardEl.dataset.title = title.toLowerCase();
+      cardEl.dataset.year = year ? String(year) : "";
+      cardEl.dataset.rating = String(rating || 0);
+      cardEl.dataset.watched = String(watched || 0);
+      cardEl.dataset.index = String(CARD_INDEX++);
+      grid.appendChild(cardEl);
+
+      // rating UI
+      renderUserRating(ratingContainer, rating || 0);
+      updateRatingLabel(ratingLabel, rating || 0);
+
+      ratingContainer.addEventListener("click", async (e) => {
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+        const value = target.dataset.rate;
+        if (!value) return;
+        const newRating = Number(value);
+
+        renderUserRating(ratingContainer, newRating);
+        updateRatingLabel(ratingLabel, newRating);
+        cardEl.dataset.rating = String(newRating);
+
+        try {
+          await fetch(`${API_SERIES}/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rating: newRating }),
+          });
+          const idx = SERIES.findIndex((s) => s.id === id);
+          if (idx !== -1) SERIES[idx].rating = newRating;
+          applyFiltersAndSort();
+        } catch {
+          // ignore
+        }
+      });
+
+      // watched controls
+      let totalEpisodes = null; // filled when TMDB data arrives
+      updateWatchedLabel(watchedLabel, watched || 0, totalEpisodes);
+
+      btnWatchedInc.addEventListener("click", async () => {
+        let current = Number(cardEl.dataset.watched || "0");
+        let next = current + 1;
+        if (totalEpisodes && totalEpisodes > 0) {
+          next = Math.min(next, totalEpisodes);
+        }
+        cardEl.dataset.watched = String(next);
+        updateWatchedLabel(watchedLabel, next, totalEpisodes);
+        try {
+          await fetch(`${API_SERIES}/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ watched: next }),
+          });
+          const idx = SERIES.findIndex((s) => s.id === id);
+          if (idx !== -1) SERIES[idx].watched = next;
+          applyFiltersAndSort();
+        } catch {
+          // ignore
+        }
+      });
+
+      btnWatchedDec.addEventListener("click", async () => {
+        let current = Number(cardEl.dataset.watched || "0");
+        let next = Math.max(0, current - 1);
+        cardEl.dataset.watched = String(next);
+        updateWatchedLabel(watchedLabel, next, totalEpisodes);
+        try {
+          await fetch(`${API_SERIES}/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ watched: next }),
+          });
+          const idx = SERIES.findIndex((s) => s.id === id);
+          if (idx !== -1) SERIES[idx].watched = next;
+          applyFiltersAndSort();
+        } catch {
+          // ignore
+        }
+      });
+
+      // delete
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`Delete "${title}"?`)) return;
+        try {
+          await fetch(`${API_SERIES}/${id}`, { method: "DELETE" });
+        } catch {
+          // ignore
+        }
+        cardEl.remove();
+        SERIES = SERIES.filter((s) => s.id !== id);
+        applyFiltersAndSort();
+      });
+
+      // edit
+      editBtn.addEventListener("click", () => {
+        const formWrap = document.getElementById("seriesFormWrap");
+        const idInput = document.getElementById("seriesId");
+        const titleInput = document.getElementById("seriesTitle");
+        const yearInput = document.getElementById("seriesYear");
+        const statusSpan = document.getElementById("seriesFormStatus");
+
+        idInput.value = id;
+        titleInput.value = title;
+        yearInput.value = year || "";
+        statusSpan.textContent = "Editing existing series…";
+        formWrap.classList.remove("hidden");
+      });
+
+      // updater when TMDB data arrives
+      return function update(data) {
+        p.textContent = data.overview || "";
+        meta.innerHTML = [
+          data.name && data.name !== title
+            ? `<span class="opacity-80">TMDB: ${data.name}</span>`
+            : "",
+          data.date ? `<span>First air: ${data.date}</span>` : "",
+          data.vote_average
+            ? `<span>TMDB rating: ${Number(data.vote_average).toFixed(1)}</span>`
+            : "",
+          data.networks?.length
+            ? `<span>Networks: ${data.networks.join(", ")}</span>`
+            : "",
+          data.status ? `<span>Status: ${data.status}</span>` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        const imgWrap = cardEl.querySelector("[data-img]");
+        if (data.poster_path) {
+          const img = document.createElement("img");
+          img.loading = "lazy";
+          img.src = IMG_BASE + data.poster_path;
+          img.alt = data.name || title;
+          img.className = "w-full h-auto block";
+          imgWrap.innerHTML = "";
+          imgWrap.appendChild(img);
+        } else {
+          imgWrap.textContent = "No image";
+        }
+
+        if (data.tmdbUrl) {
+          link.href = data.tmdbUrl;
+        }
+
+        if (typeof data.number_of_episodes === "number") {
+          totalEpisodes = data.number_of_episodes;
+          const currentWatched = Number(cardEl.dataset.watched || "0");
+          updateWatchedLabel(watchedLabel, currentWatched, totalEpisodes);
+        }
+      };
+    }
+
+    function populateYearFilter(list) {
+      const years = Array.from(
+        new Set(list.map((x) => x.year).filter((y) => !!y))
+      ).sort((a, b) => a - b);
+      const sel = document.getElementById("yearFilter");
+      years.forEach((y) => {
+        const o = document.createElement("option");
+        o.value = String(y);
+        o.textContent = y;
+        sel.appendChild(o);
+      });
+    }
+
+    function applyFiltersAndSort() {
+      const q = document
+        .getElementById("searchInput")
+        .value.trim()
+        .toLowerCase();
+      const y = document.getElementById("yearFilter").value;
+      const sortBy = document.getElementById("sortBy").value;
+      const grid = document.getElementById("grid");
+      const cards = Array.from(grid.children);
+
+      // sort
+      cards.sort((a, b) => {
+        const ra = Number(a.dataset.rating || "0");
+        const rb = Number(b.dataset.rating || "0");
+        const wa = Number(a.dataset.watched || "0");
+        const wb = Number(b.dataset.watched || "0");
+        const ya = Number(a.dataset.year || "0");
+        const yb = Number(b.dataset.year || "0");
+        const ta = a.dataset.title || "";
+        const tb = b.dataset.title || "";
+        const ia = Number(a.dataset.index || "0");
+        const ib = Number(b.dataset.index || "0");
+
+        if (sortBy === "rating") {
+          if (rb !== ra) return rb - ra;
+          return ia - ib;
+        }
+        if (sortBy === "watched") {
+          if (wb !== wa) return wb - wa;
+          return ia - ib;
+        }
+        if (sortBy === "year") {
+          if (yb !== ya) return yb - ya;
+          return ia - ib;
+        }
+        if (sortBy === "title") {
+          return ta.localeCompare(tb);
+        }
+        return ia - ib;
+      });
+
+      cards.forEach((c) => grid.appendChild(c));
+
+      // filter
+      let shown = 0;
+      cards.forEach((card) => {
+        const title = card.dataset.title || "";
+        const year = card.dataset.year || "";
+        const desc = (card.querySelector("p").textContent || "").toLowerCase();
+        const matchQ = !q || title.includes(q) || desc.includes(q);
+        const matchY = !y || year === y;
+        const visible = matchQ && matchY;
+        card.style.display = visible ? "" : "none";
+        if (visible) shown++;
+      });
+
+      document.getElementById("status").textContent =
+        shown + " of " + cards.length + " shown";
+    }
+
+    function exportCsv() {
+      const headers = [
+        "Input Title",
+        "Input Year",
+        "Your Rating",
+        "Watched",
+        "TMDB ID",
+        "TMDB Name",
+        "First Air Date",
+        "TMDB Rating",
+        "Status",
+        "Networks",
+        "TMDB URL",
+      ];
+      const rows = DATA.map((d) => [
+        d.inputTitle,
+        d.inputYear,
+        d.userRating ?? "",
+        d.userWatched ?? "",
+        d.id || "",
+        d.name || "",
+        d.date || "",
+        d.vote_average || "",
+        d.status || "",
+        (d.networks || []).join("; "),
+        d.tmdbUrl || "",
+      ]);
+      const csv = [headers, ...rows]
+        .map((r) =>
+          r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")
+        )
+        .join("\n");
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "series.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function exportJson() {
+      const subset = DATA.map(
+        ({
+          inputTitle,
+          inputYear,
+          userRating,
+          userWatched,
+          id,
+          name,
+          date,
+          vote_average,
+          status,
+          networks,
+          tmdbUrl,
+          poster_path,
+          number_of_episodes,
+        }) => ({
+          inputTitle,
+          inputYear,
+          userRating,
+          userWatched,
+          id,
+          name,
+          date,
+          vote_average,
+          status,
+          networks,
+          tmdbUrl,
+          poster_path,
+          number_of_episodes,
+        })
+      );
+      const blob = new Blob([JSON.stringify(subset, null, 2)], {
+        type: "application/json",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "series.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document
+      .getElementById("searchInput")
+      .addEventListener("input", debounce(applyFiltersAndSort, 150));
+    document
+      .getElementById("yearFilter")
+      .addEventListener("change", applyFiltersAndSort);
+    document
+      .getElementById("sortBy")
+      .addEventListener("change", applyFiltersAndSort);
+    document
+      .getElementById("exportCsv")
+      .addEventListener("click", exportCsv);
+    document
+      .getElementById("exportJson")
+      .addEventListener("click", exportJson);
+
+    // search autocomplete
+    (function initSearchSuggestions() {
+      const input = document.getElementById("searchInput");
+      const box = document.getElementById("searchSuggestions");
+
+      function renderSuggestions() {
+        const q = input.value.trim().toLowerCase();
+        if (!q) {
+          box.classList.add("hidden");
+          box.innerHTML = "";
+          return;
+        }
+        const matches = SERIES.filter((s) =>
+          s.title.toLowerCase().includes(q)
+        ).slice(0, 8);
+        if (!matches.length) {
+          box.classList.add("hidden");
+          box.innerHTML = "";
+          return;
+        }
+        box.innerHTML = "";
+        matches.forEach((s) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className =
+            "w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-100";
+          item.textContent = s.year ? `${s.title} — ${s.year}` : s.title;
+          item.addEventListener("click", () => {
+            input.value = s.title;
+            box.classList.add("hidden");
+            applyFiltersAndSort();
+          });
+          box.appendChild(item);
+        });
+        box.classList.remove("hidden");
+      }
+
+      input.addEventListener("input", debounce(renderSuggestions, 120));
+      input.addEventListener("focus", renderSuggestions);
+      input.addEventListener("blur", () => {
+        setTimeout(() => {
+          box.classList.add("hidden");
+        }, 150);
+      });
+    })();
+
+    // form show/hide + submit
+    (function initForm() {
+      const toggleBtn = document.getElementById("toggleForm");
+      const wrap = document.getElementById("seriesFormWrap");
+      const form = document.getElementById("seriesForm");
+      const idInput = document.getElementById("seriesId");
+      const titleInput = document.getElementById("seriesTitle");
+      const yearInput = document.getElementById("seriesYear");
+      const cancelBtn = document.getElementById("seriesCancel");
+      const statusSpan = document.getElementById("seriesFormStatus");
+
+      toggleBtn.addEventListener("click", () => {
+        wrap.classList.toggle("hidden");
+        if (!wrap.classList.contains("hidden")) {
+          statusSpan.textContent = "Add a new series";
+        }
+      });
+
+      cancelBtn.addEventListener("click", () => {
+        idInput.value = "";
+        titleInput.value = "";
+        yearInput.value = "";
+        statusSpan.textContent = "";
+        wrap.classList.add("hidden");
+      });
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const id = idInput.value.trim();
+        const title = titleInput.value.trim();
+        const yearVal = yearInput.value.trim();
+        const year = yearVal === "" ? null : Number(yearVal);
+
+        if (!title) {
+          statusSpan.textContent = "Title is required";
+          return;
+        }
+
+        statusSpan.textContent = "Saving…";
+        try {
+          if (id) {
+            await fetch(`${API_SERIES}/${id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, year }),
+            });
+          } else {
+            await fetch(API_SERIES, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, year }),
+            });
+          }
+          location.reload();
+        } catch (err) {
+          statusSpan.textContent = "Error saving";
+        }
+      });
+    })();
+
+    async function pool(tasks, limit = 4) {
+      let i = 0,
+        running = 0;
+      const results = [];
+      return new Promise((resolve) => {
+        const next = () => {
+          if (i === tasks.length && running === 0) return resolve(results);
+          while (running < limit && i < tasks.length) {
+            const idx = i++;
+            running++;
+            tasks[idx]()
+              .then((r) => (results[idx] = r))
+              .catch(() => {})
+              .finally(() => {
+                running--;
+                next();
+              });
+          }
+        };
+        next();
+      });
+    }
+
+    // init
+    (async function init() {
+      try {
+        const list = await readSeriesList();
+        SERIES = list;
+        populateYearFilter(list);
+        document.getElementById("status").textContent =
+          "Loaded " + list.length + " items. Looking up on TMDB…";
+
+        const tasks = list.map((item) => {
+          const { id, title, year, rating = 0, watched = 0 } = item;
+          const update = mountCard(item);
+          return async () => {
+            try {
+              const data = await fetchShow(title, year);
+              const row = {
+                inputTitle: title,
+                inputYear: year,
+                userRating: rating || 0,
+                userWatched: watched || 0,
+                ...data,
+              };
+              DATA.push(row);
+              update(data);
+              applyFiltersAndSort();
+              document.getElementById("status").textContent =
+                DATA.length + "/" + list.length + " fetched";
+            } catch (e) {
+              update({ overview: String(e) });
+            }
+          };
+        });
+
+        await pool(tasks, 4);
+        applyFiltersAndSort();
+      } catch (e) {
+        document.getElementById("status").textContent =
+          "Error: " + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>
