@@ -1,0 +1,15 @@
+[[redirects]]
+  from = "/convertor"
+  to = "/convertor/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/convertor/"
+  to = "/convertor/index.html"
+  status = 200
+
+# your existing SPA catch-all below
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
