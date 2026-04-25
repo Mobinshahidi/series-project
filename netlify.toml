@@ -1,3 +1,6 @@
+[build]
+  publish = "public"
+
 [[redirects]]
   from = "/convertor"
   to = "/convertor/index.html"
@@ -8,7 +11,6 @@
   to = "/convertor/index.html"
   status = 200
 
-# your existing SPA catch-all below
 [[redirects]]
   from = "/*"
   to = "/index.html"
